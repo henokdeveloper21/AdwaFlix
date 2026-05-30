@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base dark theme – permanent dark mode */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 5%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 5%;
+    --popover-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 12%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 240 3.7% 18%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 15%;
+    --input: 240 3.7% 15%;
+
+    /* Brand – warm amber / orange gradient */
+    --primary: 25 95% 53%;           /* orange-500 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 3.7% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --ring: 25 95% 53%;              /* matches primary */
+
+    --radius: 1.5rem;                /* pill-like corners */
+  }
+
+  .dark {
+    /* Ensure dark class overrides (same values) */
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 5%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 5%;
+    --popover-foreground: 0 0% 98%;
+    --muted: 240 3.7% 12%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 18%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15%;
+    --input: 240 3.7% 15%;
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 3.7% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --ring: 25 95% 53%;
+    --radius: 1.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-black text-foreground antialiased;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv02";
+    /* Custom selection */
+    ::selection {
+      @apply bg-amber-500/30 text-white;
+    }
+  }
+}
+
+@layer components {
+  /* Premium container */
+  .container-premium {
+    @apply mx-auto max-w-[1440px] px-6 lg:px-12;
+  }
+
+  /* Ultra glass – Apple TV+ style */
+  .glass-premium {
+    @apply backdrop-blur-3xl bg-white/[0.02] border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)];
+  }
+
+  /* Shimmer text animation */
+  .animate-text-shimmer {
+    background: linear-gradient(
+      110deg,
+      #ffffff 45%,
+      #f59e0b 50%,
+      #ffffff 55%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  /* Cinematic vignette */
+  .vignette-overlay {
+    background: radial-gradient(
+      circle at center,
+      transparent 0%,
+      rgba(3, 3, 3, 0.9) 100%
+    );
+  }
+}
+
+/* Custom keyframes */
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Slow floating orb animation (used by animated-background) */
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -30px) scale(1.02);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.98);
+  }
+  75% {
+    transform: translate(-30px, -20px) scale(1.01);
+  }
+}
+
+.animate-float {
+  animation: float 20s ease-in-out infinite;
+}
+
+/* Luxury Apple TV+ Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
