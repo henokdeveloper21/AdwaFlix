@@ -4,7 +4,7 @@ import { tmdbService } from '@/api/tmdb';
 export async function GET() {
   const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://adwastream.xyz';
 
-  // Static pages – always included
+  // Static pages always included
   const staticPages = [
     { path: '', priority: 1.0, changefreq: 'daily' },
     { path: '/movies', priority: 0.9, changefreq: 'daily' },
@@ -16,24 +16,38 @@ export async function GET() {
     { path: '/watchlist', priority: 0.5, changefreq: 'weekly' },
   ];
 
-  // Fetch trending movies and TV shows to generate dynamic URLs
   let movieIds: number[] = [];
   let tvIds: number[] = [];
 
+  // Fetch popular movies & TV with a hard 2‑second timeout
+  const fetchWithTimeout = async (fetcher: () => Promise<any>, timeoutMs: number) => {
+    try {
+      const result = await Promise.race([
+        fetcher(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), timeoutMs)
+        ),
+      ]);
+      return result;
+    } catch {
+      return null;
+    }
+  };
+
   try {
     const [moviesRes, tvRes] = await Promise.allSettled([
-      tmdbService.getPopularMovies(1),
-      tmdbService.getPopularTVShows(1),
+      fetchWithTimeout(() => tmdbService.getPopularMovies(1), 2000),
+      fetchWithTimeout(() => tmdbService.getPopularTVShows(1), 2000),
     ]);
 
-    if (moviesRes.status === 'fulfilled') {
+    if (moviesRes.status === 'fulfilled' && moviesRes.value) {
       movieIds = moviesRes.value.results.map((m: any) => m.id);
     }
-    if (tvRes.status === 'fulfilled') {
+    if (tvRes.status === 'fulfilled' && tvRes.value) {
       tvIds = tvRes.value.results.map((t: any) => t.id);
     }
   } catch {
-    // If TMDB fails, we still serve the static pages
+    // If anything fails, we still serve the static pages
   }
 
   const movieUrls = movieIds
@@ -42,7 +56,6 @@ export async function GET() {
         `<url><loc>${siteUrl}/movies/${id}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
     )
     .join('');
-
   const tvUrls = tvIds
     .map(
       (id) =>
@@ -51,18 +64,13 @@ export async function GET() {
     .join('');
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml"
-        xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
-        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   ${staticPages
     .map(
       (p) =>
         `<url><loc>${siteUrl}${p.path}</loc><changefreq>${p.changefreq}</changefreq><priority>${p.priority}</priority></url>`
     )
-    .join('')}
+    .join('\n')}
   ${movieUrls}
   ${tvUrls}
 </urlset>`;
@@ -70,7 +78,8 @@ export async function GET() {
   return new NextResponse(sitemap, {
     headers: {
       'Content-Type': 'application/xml',
-      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=600',
+      // Cache aggressively – Google can re‑fetch once a day
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
     },
   });
 }
