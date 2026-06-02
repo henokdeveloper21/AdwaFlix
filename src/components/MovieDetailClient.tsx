@@ -75,6 +75,11 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
   const [providersError, setProvidersError] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
 
+  // --- Peachify state (for download only) ---
+  const [peachifySources, setPeachifySources] = useState<any[]>([]);
+  const [peachifyLoading, setPeachifyLoading] = useState(false);
+  const [selectedQuality, setSelectedQuality] = useState<string>("");
+
   const { download, setDownload, startDownload, cancelDownload } = useDownload();
   const { copied, copy } = useCopyToClipboard();
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
@@ -109,6 +114,35 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
     };
     fetchExtra();
   }, [movieId, isInFavorites, isInWatchlist]);
+
+  // --- Fetch Peachify sources once (for download) ---
+  useEffect(() => {
+    const fetchPeachify = async () => {
+      setPeachifyLoading(true);
+      try {
+        const res = await fetch(`/api/peachify?tmdbId=${movieId}&type=movie`);
+        const data = await res.json();
+        if (data.sources) {
+          const mp4Sources = data.sources.filter((s: any) => s.type === "mp4");
+          setPeachifySources(mp4Sources);
+          if (mp4Sources.length > 0) {
+            // Auto-select the highest quality (default)
+            const sorted = [...mp4Sources].sort((a, b) => {
+              const aQ = parseInt(a.quality) || 0;
+              const bQ = parseInt(b.quality) || 0;
+              return bQ - aQ;
+            });
+            setSelectedQuality(sorted[0].quality);
+          }
+        }
+      } catch (err) {
+        console.error("Peachify fetch error", err);
+      } finally {
+        setPeachifyLoading(false);
+      }
+    };
+    fetchPeachify();
+  }, [movieId]);
 
   const fetchProviderSources = useCallback(async () => {
     if (!movieData) return;
@@ -224,6 +258,13 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
       }
     : null;
 
+  // --- Helper to get selected MP4 source URL ---
+  const getSelectedMp4Url = () => {
+    if (!selectedQuality) return null;
+    const selected = peachifySources.find(s => s.quality === selectedQuality);
+    return selected?.url || null;
+  };
+
   return (
     <main className="min-h-screen bg-black">
       <Header />
@@ -279,7 +320,7 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
             </motion.div>
 
             <div className="mt-6 space-y-3">
-              {/* Watch Now – Opens Provider Sheet */}
+              {/* Watch Now – Opens Provider Sheet (unchanged) */}
               <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
                 <SheetTrigger>
                   <Button
@@ -350,7 +391,7 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
                         </div>
                       )}
 
-                    {/* Provider list with expandable qualities */}
+                    {/* Provider list with expandable qualities (unchanged) */}
                     {streamSources.length > 0 && (
                       <div className="space-y-3">
                         {Object.entries(groupedProviders).map(
@@ -435,121 +476,151 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
                 </SheetContent>
               </Sheet>
 
-              {/* ── Download Section ── */}
-              {(() => {
-                const mp4Source = streamSources.find(
-                  (s: any) => s.type === "mp4" || s.type === "direct"
-                );
-                const bestStream = streamSources[0];
+              {/* ── DOWNLOAD SECTION (Peachify only, with quality selector) ── */}
+              {peachifyLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="animate-spin text-amber-500" size={24} />
+                  <span className="ml-2 text-zinc-400 text-sm">Loading Peachify streams...</span>
+                </div>
+              ) : peachifySources.length > 0 ? (
+                <>
+                  {/* Quality selector (if multiple MP4 qualities) */}
+                  {peachifySources.length > 1 && (
+                    <div className="flex items-center justify-between gap-2 bg-white/5 rounded-lg p-2 border border-white/10">
+                      <span className="text-xs text-zinc-400">Quality:</span>
+                      <select
+                        value={selectedQuality}
+                        onChange={(e) => setSelectedQuality(e.target.value)}
+                        className="bg-black/60 text-white text-sm rounded-lg px-3 py-1.5 border border-white/20 focus:outline-none focus:border-amber-500"
+                      >
+                        {peachifySources.map((s) => (
+                          <option key={s.quality} value={s.quality}>
+                            {s.quality}p
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
-                if (mp4Source) {
-                  if (download.status === "idle") {
+                  {/* Download button */}
+                  {(() => {
+                    const mp4Url = getSelectedMp4Url();
+                    if (download.status === "idle") {
+                      return (
+                        <Button
+                          variant="glass"
+                          size="xl"
+                          className="w-full h-14 text-lg font-medium hover:bg-amber-500/20 hover:border-amber-500/30 transition-all"
+                          onClick={() => {
+                            const filename = `${movieData.title.replace(
+                              /[^a-z0-9]/gi,
+                              "_"
+                            )}.mp4`;
+                            startDownload(mp4Url!, filename);
+                          }}
+                        >
+                          <Download className="mr-2 w-5 h-5" />
+                          Download MP4 ({selectedQuality}p)
+                        </Button>
+                      );
+                    }
+                    if (download.status === "downloading") {
+                      return (
+                        <div className="space-y-2 w-full">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-zinc-400">
+                              Downloading {selectedQuality}p…
+                            </span>
+                            <span className="text-amber-500 font-mono">
+                              {download.progress}%
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full bg-gradient-to-r from-amber-500 to-amber-600"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${download.progress}%` }}
+                            />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-400 w-full"
+                            onClick={cancelDownload}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      );
+                    }
+                    if (download.status === "complete") {
+                      return (
+                        <div className="text-center text-green-400 text-sm font-medium py-2">
+                          ✅ Download complete!
+                          <button
+                            onClick={() =>
+                              setDownload({
+                                status: "idle",
+                                progress: 0,
+                                filename: "",
+                              })
+                            }
+                            className="ml-2 underline text-zinc-400"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (download.status === "error") {
+                      return (
+                        <div className="text-center text-red-400 text-sm py-2">
+                          {download.error || "Download failed"}
+                          <button
+                            onClick={() =>
+                              setDownload({
+                                status: "idle",
+                                progress: 0,
+                                filename: "",
+                              })
+                            }
+                            className="ml-2 underline"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </>
+              ) : (
+                // No MP4 from Peachify – show copy URL button for the first Peachify source (if any)
+                (() => {
+                  const anyPeachify = peachifySources[0];
+                  if (!anyPeachify) {
                     return (
+                      <div className="text-center text-zinc-500 text-sm py-2">
+                        No Peachify streams available.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2 w-full">
                       <Button
                         variant="glass"
                         size="xl"
-                        className="w-full h-14 text-lg font-medium hover:bg-amber-500/20 hover:border-amber-500/30 transition-all"
-                        onClick={() => {
-                          const filename = `${movieData.title.replace(
-                            /[^a-z0-9]/gi,
-                            "_"
-                          )}.mp4`;
-                          startDownload(mp4Source.url, filename);
-                        }}
+                        className="w-full h-14 text-lg font-medium opacity-50 cursor-not-allowed"
+                        disabled
                       >
                         <Download className="mr-2 w-5 h-5" />
-                        Download MP4
+                        Download (HLS only – use button below)
                       </Button>
-                    );
-                  }
-                  if (download.status === "downloading") {
-                    return (
-                      <div className="space-y-2 w-full">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-zinc-400">
-                            Downloading…
-                          </span>
-                          <span className="text-amber-500 font-mono">
-                            {download.progress}%
-                          </span>
-                        </div>
-                        <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                          <motion.div
-                            className="h-full bg-gradient-to-r from-amber-500 to-amber-600"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${download.progress}%` }}
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-400 w-full"
-                          onClick={cancelDownload}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    );
-                  }
-                  if (download.status === "complete") {
-                    return (
-                      <div className="text-center text-green-400 text-sm font-medium py-2">
-                        ✅ Download complete!
-                        <button
-                          onClick={() =>
-                            setDownload({
-                              status: "idle",
-                              progress: 0,
-                              filename: "",
-                            })
-                          }
-                          className="ml-2 underline text-zinc-400"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    );
-                  }
-                  if (download.status === "error") {
-                    return (
-                      <div className="text-center text-red-400 text-sm py-2">
-                        {download.error || "Download failed"}
-                        <button
-                          onClick={() =>
-                            setDownload({
-                              status: "idle",
-                              progress: 0,
-                              filename: "",
-                            })
-                          }
-                          className="ml-2 underline"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    );
-                  }
-                  return null;
-                }
-
-                // No MP4 – show copy URL
-                return (
-                  <div className="space-y-2 w-full">
-                    <Button
-                      variant="glass"
-                      size="xl"
-                      className="w-full h-14 text-lg font-medium opacity-50 cursor-not-allowed"
-                      disabled
-                    >
-                      <Download className="mr-2 w-5 h-5" />
-                      Download (HLS only – use button below)
-                    </Button>
-                    {bestStream && (
                       <Button
                         variant="outline"
                         size="lg"
                         className="w-full h-10 text-sm font-medium border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                        onClick={() => copy(bestStream.url)}
+                        onClick={() => copy(anyPeachify.url)}
                       >
                         {copied ? (
                           <>
@@ -559,19 +630,21 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
                         ) : (
                           <>
                             <Copy className="mr-2 w-4 h-4" />
-                            Copy Stream URL (for IDM / JDownloader)
+                            Copy Peachify Stream URL
                           </>
                         )}
                       </Button>
-                    )}
-                    <p className="text-[10px] text-zinc-500 text-center">
-                      HLS streams can be downloaded using external tools like
-                      IDM or JDownloader
-                    </p>
-                  </div>
-                );
-              })()}
+                      <p className="text-[10px] text-zinc-500 text-center">
+                        {anyPeachify.type === "hls"
+                          ? "HLS stream – use external downloader like IDM or JDownloader"
+                          : "No direct MP4 from Peachify available"}
+                      </p>
+                    </div>
+                  );
+                })()
+              )}
 
+              {/* Watchlist & Favorites buttons (unchanged) */}
               <Button
                 variant={inWatchlist ? "glass" : "outline"}
                 size="xl"
@@ -608,6 +681,7 @@ export function MovieDetailClient({ movieData, movieId }: MovieDetailClientProps
           </div>
 
           <div className="md:col-span-3 space-y-8">
+            {/* ... rest of the content (title, overview, cast, etc.) unchanged ... */}
             <div>
               <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white mb-4 drop-shadow-2xl">
                 {movieData.title}
